@@ -1,0 +1,847 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1C1E24">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>積層</title>
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" href="./icon-192.png">
+<link rel="apple-touch-icon" href="./icon-192.png">
+<style>
+:root{
+  --ground:#1C1E24; --felt:#23262E; --card:#292D37; --edge:#373D4A;
+  --chalk:#E6E3DA; --dim:#9AA0AC; --faint:#6C7280;
+  --did:#7BC4A4; --part:#DFC066; --pass:#7FA8D9; --notice:#B092D4; --rest:#DFA0A8;
+  --min:"Hiragino Mincho ProN","Yu Mincho",YuMincho,"Noto Serif JP",serif;
+  --got:"Hiragino Sans","Yu Gothic",YuGothic,"Noto Sans JP",system-ui,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+body{
+  background:var(--ground); color:var(--chalk); font-family:var(--got);
+  font-size:16px; line-height:1.6; -webkit-text-size-adjust:100%;
+  overscroll-behavior-y:contain;
+}
+#root{max-width:480px;margin:0 auto;padding:22px 20px 120px}
+button{font-family:inherit;font-size:inherit;color:inherit;background:none;border:none;padding:0;cursor:pointer}
+button:active{transform:translateY(1px)}
+input,textarea{font-family:inherit;font-size:16px;background:var(--ground);color:var(--chalk);
+  border:1px solid var(--edge);border-radius:4px;padding:9px 11px;width:100%;outline:none}
+input:focus-visible,textarea:focus-visible,button:focus-visible{outline:2px solid var(--part);outline-offset:2px}
+::placeholder{color:var(--faint)}
+textarea{font-family:var(--mono);font-size:11px;line-height:1.5;resize:vertical}
+
+.mono{font-family:var(--mono)}
+.min{font-family:var(--min)}
+.tiny{font-size:11px}
+.xs{font-size:12.5px}
+.sm{font-size:14px}
+.dim{color:var(--dim)}
+.faint{color:var(--faint)}
+.row{display:flex;gap:8px}
+.wrap{display:flex;flex-wrap:wrap;gap:6px}
+.grow{flex:1;min-width:0}
+.mt{margin-top:32px}
+.stack>*+*{margin-top:7px}
+
+.seclabel{font-family:var(--mono);font-size:10px;letter-spacing:.16em;color:var(--faint);margin-bottom:11px}
+h1{font-family:var(--min);font-size:21px;letter-spacing:.18em;font-weight:400;margin:0}
+
+.hdr{display:flex;align-items:baseline;justify-content:space-between}
+.total{font-family:var(--mono);font-size:26px;line-height:1}
+.hdrmeta{display:flex;gap:16px;margin-top:11px;font-family:var(--mono);font-size:11px;color:var(--faint)}
+
+.card{background:var(--card);border:1px solid var(--edge);border-radius:4px;padding:11px 13px;text-align:left;width:100%;display:block}
+.soft{background:var(--felt)}
+.side{background:var(--felt);border:1px solid var(--edge);border-radius:4px;padding:0 13px;font-size:11px;color:var(--dim);flex-shrink:0}
+.side.on{background:var(--card);border-color:var(--chalk);color:var(--chalk)}
+.dash{border:1px dashed var(--edge);border-radius:4px;padding:12px;width:100%;font-size:12.5px;color:var(--dim);text-align:center;display:block}
+.chip{border:1px solid var(--edge);border-radius:999px;padding:4px 11px;font-size:11px;color:var(--faint)}
+.pill{background:var(--felt);border:1px solid var(--edge);border-radius:4px;padding:6px 10px;font-size:11px;color:var(--dim)}
+.act{background:var(--chalk);color:var(--ground);border-radius:4px;padding:9px 17px;font-size:12.5px}
+.ghost{border:1px solid var(--edge);border-radius:4px;padding:9px 17px;font-size:12.5px;color:var(--faint)}
+.mini{border:1px solid var(--edge);border-radius:4px;padding:5px 9px;font-size:11px;color:var(--dim)}
+.panel{background:var(--felt);border:1px solid var(--edge);border-radius:4px;padding:12px}
+.note{font-size:11px;line-height:1.7;color:var(--faint)}
+.lab{font-family:var(--mono);font-size:10px;color:var(--faint);margin-top:4px}
+
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+
+.handle{touch-action:none;cursor:grab;padding:0 11px;font-size:15px;color:var(--faint);
+  align-self:stretch;display:flex;align-items:center;flex-shrink:0}
+.handle:active{cursor:grabbing}
+.arrow{border:1px solid var(--edge);border-radius:4px;width:34px;height:34px;font-size:12px;
+  color:var(--dim);flex-shrink:0}
+.arrow[disabled]{opacity:.3}
+.dragging{opacity:.65;position:relative;z-index:5}
+
+.band{display:flex;border-radius:3px;overflow:hidden;flex:1}
+.stratarow{display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:2px 0}
+.strataday{font-family:var(--mono);font-size:10px;width:56px;flex-shrink:0;color:var(--faint)}
+.entry{display:flex;align-items:baseline;gap:8px}
+.dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;margin-top:6px}
+
+nav{position:fixed;left:0;right:0;bottom:0;background:var(--felt);border-top:1px solid var(--edge);
+  padding-bottom:env(safe-area-inset-bottom)}
+nav .inner{max-width:480px;margin:0 auto;display:flex}
+nav button{flex:1;padding:15px 0;font-size:11px;color:var(--faint);border-top:2px solid transparent}
+nav button.on{color:var(--chalk);border-top-color:var(--chalk)}
+
+#toast{position:fixed;left:0;right:0;bottom:78px;padding:0 20px;z-index:20;pointer-events:none}
+#toast .inner{max-width:480px;margin:0 auto;pointer-events:auto}
+
+.warn{border:1px solid var(--part);color:var(--part);border-radius:4px;padding:9px 12px;font-size:12px;line-height:1.7;margin-bottom:16px}
+.fade{animation:f .18s ease-out}
+@keyframes f{from{opacity:0;transform:translateY(4px)}to{opacity:1}}
+@media (prefers-reduced-motion:reduce){.fade{animation:none}button:active{transform:none}}
+.hide{display:none}
+</style>
+</head>
+<body>
+<div id="root">
+  <div id="hdr"></div>
+  <div id="banner"></div>
+  <div id="view"></div>
+</div>
+<div id="toast"></div>
+<nav><div class="inner" id="nav"></div></nav>
+
+<script>
+"use strict";
+
+/* ══════════════ 定義 ══════════════ */
+var CATS = {
+  did:    { label:"やった",         color:"var(--did)" },
+  part:   { label:"ちょっとやった", color:"var(--part)" },
+  pass:   { label:"見送った",       color:"var(--pass)" },
+  notice: { label:"気づいた",       color:"var(--notice)" },
+  rest:   { label:"休んだ",         color:"var(--rest)" }
+};
+var CAT_KEYS = ["did","part","pass","notice","rest"];
+
+/* 「気まぐれに3つ」のたね。一覧では並べない。引いたときだけ顔を出す。 */
+var PRESETS = [
+  ["p01","水を一杯飲む","did"],["p02","窓を開けて空気を入れる","did"],
+  ["p03","机の上のものを3つ片づける","did"],["p04","5分だけ外を歩く","did"],
+  ["p05","洗い物をひとつ片づける","did"],["p06","ゴミを1袋まとめる","did"],
+  ["p07","洗濯機を回す","did"],["p08","布団を整える","did"],
+  ["p09","明日着るものを出しておく","did"],["p10","財布のレシートを捨てる","did"],
+  ["p11","スマホの通知を1つ切る","did"],["p12","使っていないアプリを1つ消す","did"],
+  ["p13","写真を10枚消す","did"],["p14","積んである本を1ページ読む","did"],
+  ["p15","肩を回す","did"],["p16","ストレッチを1つする","did"],
+  ["p17","白湯を飲む","did"],["p18","階段を使う","did"],
+  ["p19","冷蔵庫の古いものを1つ捨てる","did"],["p20","玄関の靴を並べる","did"],
+  ["p21","配線を1本整える","did"],["p22","ブックマークを3つ整理する","did"],
+  ["p23","作業のファイルを開くだけ開く","part"],["p24","下書きに1行だけ書く","part"],
+  ["p25","出かける服に着替える","part"],["p26","靴を履いて玄関まで行く","part"],
+  ["p27","やることを1行メモする","part"],["p28","積んでいるゲームを起動だけする","part"],
+  ["p29","参考にする資料を1つ開く","part"],
+  ["p30","カートに入れたものを買わずに閉じる","pass"],["p31","気になった通知を開かずに置く","pass"],
+  ["p32","夜の買い物を朝まで待つ","pass"],["p33","見ようとした動画を1本やめる","pass"],
+  ["p34","返信を急がず明日に回す","pass"],["p35","検索しかけた手を止める","pass"],
+  ["p36","いま何をしたいか1行書く","notice"],["p37","疲れている場所に気づく","notice"],
+  ["p38","今日よかったことを1つ思い出す","notice"],["p39","明日の自分に一言残す","notice"],
+  ["p40","部屋を見回して気づいたことを書く","notice"],["p41","お金を使った理由を1つ書く","notice"],
+  ["p42","いまの気分に名前をつける","notice"],
+  ["p43","何もしない時間を10分とる","rest"],["p44","3回深呼吸する","rest"],
+  ["p45","画面を伏せて5分過ごす","rest"],["p46","早めに布団に入る","rest"],
+  ["p47","少し横になる","rest"],["p48","今日は何もしないと決める","rest"],
+  ["p49","湯船に浸かる","rest"],["p50","照明を落として過ごす","rest"]
+].map(function(a){ return {id:a[0],label:a[1],cat:a[2],preset:true}; });
+
+/* 標本。条件はすべて単調増加のみ。一度見つけたら消えない。 */
+var SPECIMENS = [
+  ["first","最初のひとつ","はじめて記録した",function(d){return d.count>=1}],
+  ["c10","十の破片","記録が10になった",function(d){return d.count>=10}],
+  ["c50","五十の破片","記録が50になった",function(d){return d.count>=50}],
+  ["c150","百五十の破片","記録が150になった",function(d){return d.count>=150}],
+  ["c400","四百の破片","記録が400になった",function(d){return d.count>=400}],
+  ["c1000","千の破片","記録が1000になった",function(d){return d.count>=1000}],
+  ["v3","三種の見本","3種類のことを記録した",function(d){return d.distinct>=3}],
+  ["v8","八種の見本","8種類のことを記録した",function(d){return d.distinct>=8}],
+  ["v20","二十種の見本","20種類のことを記録した",function(d){return d.distinct>=20}],
+  ["allcat","五色そろい","5つの種類すべてを記録した",function(d){return d.catKinds>=5}],
+  ["free1","自分の言葉","はじめて自由に書いて記録した",function(d){return d.freeCount>=1}],
+  ["free15","言葉の採集者","自由入力を15回使った",function(d){return d.freeCount>=15}],
+  ["rest1","休むのも記録","「休んだ」をはじめて記録した",function(d){return (d.catCount.rest||0)>=1}],
+  ["rest10","上手な休息","「休んだ」を10回記録した",function(d){return (d.catCount.rest||0)>=10}],
+  ["pass1","見送る手つき","「見送った」をはじめて記録した",function(d){return (d.catCount.pass||0)>=1}],
+  ["pass10","静かな判断","「見送った」を10回記録した",function(d){return (d.catCount.pass||0)>=10}],
+  ["part1","端のかけら","「ちょっとやった」を記録した",function(d){return (d.catCount.part||0)>=1}],
+  ["part20","小さな粒の山","「ちょっとやった」を20回記録した",function(d){return (d.catCount.part||0)>=20}],
+  ["note1","気づきの層","「気づいた」をはじめて記録した",function(d){return (d.catCount.notice||0)>=1}],
+  ["morn","朝の採集","朝5時〜8時台に記録した",function(d){return d.morning}],
+  ["night","夜更けの採集","深夜0時〜3時台に記録した",function(d){return d.night}],
+  ["d3","厚い層","1日に3つ記録した",function(d){return d.maxPerDay>=3}],
+  ["d6","とても厚い層","1日に6つ記録した",function(d){return d.maxPerDay>=6}],
+  ["same10","なじみの標本","同じことを10回記録した",function(d){return d.maxPerItem>=10}],
+  ["same40","手に馴染んだ石","同じことを40回記録した",function(d){return d.maxPerItem>=40}],
+  ["s30","三十日目の地層","はじめての記録から30日が過ぎた",function(d){return d.count>=1&&d.spanDays>=30}],
+  ["s100","百日目の地層","はじめての記録から100日が過ぎた",function(d){return d.count>=1&&d.spanDays>=100}],
+  ["s365","一年目の地層","はじめての記録から365日が過ぎた",function(d){return d.count>=1&&d.spanDays>=365}],
+  ["shelf5","棚をつくった","ラベルを5つ用意した",function(d,s){return s.items.length>=5}],
+  ["back","おかえりの石","しばらく空けてから戻ってきた",function(d,s){return !!s.flags.returned}]
+].map(function(a){ return {id:a[0],name:a[1],note:a[2],ok:a[3]}; });
+
+/* ══════════════ 小道具 ══════════════ */
+function uid(){ return Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4); }
+function pad(n){ return n<10?"0"+n:""+n; }
+function dayKey(ts){ var d=new Date(ts); return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate()); }
+function prettyDay(k){ var p=k.split("-"); return (+p[1])+"月"+(+p[2])+"日"; }
+function hhmm(ts){ var d=new Date(ts); return pad(d.getHours())+":"+pad(d.getMinutes()); }
+function esc(s){ return String(s).replace(/[&<>"']/g,function(c){
+  return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
+function shuffle(a){ var x=a.slice(),i,j,t;
+  for(i=x.length-1;i>0;i--){ j=Math.floor(Math.random()*(i+1)); t=x[i]; x[i]=x[j]; x[j]=t; } return x; }
+function emptyState(){
+  return { v:1, items:[], log:[], found:{}, flags:{}, dead:[],
+           firstUse:Date.now(), lastVisit:Date.now(), lastExport:0 };
+}
+
+/* ══════════════ 保存層 ══════════════
+   IndexedDB を第一候補、localStorage を第二候補、両方使えれば両方に書く。
+   どちらも使えない場所（Claude内のプレビュー等）ではメモリのみで動き、
+   保存されていないことを画面上に明示する。 */
+var Store = (function(){
+  var K="sekiso.v1", DB="sekiso", ST="kv";
+  var okIdb=false, okLs=false, dbh=null;
+
+  function openDb(){
+    return new Promise(function(res,rej){
+      var req, done=false;
+      try{ req=indexedDB.open(DB,1); }catch(e){ return rej(e); }
+      req.onupgradeneeded=function(){ try{ req.result.createObjectStore(ST); }catch(e){} };
+      req.onsuccess=function(){ done=true; res(req.result); };
+      req.onerror=function(){ done=true; rej(req.error||new Error("open error")); };
+      req.onblocked=function(){ done=true; rej(new Error("blocked")); };
+      setTimeout(function(){ if(!done) rej(new Error("timeout")); },2500);
+    });
+  }
+  function tx(mode,fn){
+    return new Promise(function(res,rej){
+      var t,st,r;
+      try{ t=dbh.transaction(ST,mode); st=t.objectStore(ST); r=fn(st); }catch(e){ return rej(e); }
+      t.oncomplete=function(){ res(r&&r.result); };
+      t.onerror=function(){ rej(t.error); };
+      t.onabort=function(){ rej(t.error||new Error("abort")); };
+    });
+  }
+
+  return {
+    mode:"memory", detail:"",
+    init:async function(){
+      try{
+        if(typeof indexedDB!=="undefined"&&indexedDB){
+          dbh=await openDb();
+          await tx("readwrite",function(st){ return st.put("1","__probe"); });
+          var v=await tx("readonly",function(st){ return st.get("__probe"); });
+          okIdb=(v==="1");
+        }
+      }catch(e){ okIdb=false; this.detail="IndexedDB: "+(e&&e.message||e); }
+      try{
+        localStorage.setItem("sekiso.probe","1");
+        okLs=(localStorage.getItem("sekiso.probe")==="1");
+        localStorage.removeItem("sekiso.probe");
+      }catch(e){ okLs=false; this.detail+=(this.detail?" / ":"")+"localStorage: "+(e&&e.message||e); }
+      this.mode = okIdb ? (okLs?"IndexedDB + localStorage":"IndexedDB") : (okLs?"localStorage":"memory");
+      return this.mode;
+    },
+    writable:function(){ return okIdb||okLs; },
+    /* 読めたかどうかと、中身があるかどうかを必ず区別して返す */
+    load:async function(){
+      var a=null,b=null;
+      if(okIdb){ try{ a=await tx("readonly",function(st){ return st.get(K); }); }catch(e){} }
+      if(okLs){ try{ b=localStorage.getItem(K); }catch(e){} }
+      var raw = a||b;
+      if(!raw) return { read:this.writable(), data:null };
+      try{ return { read:true, data:JSON.parse(raw) }; }
+      catch(e){ return { read:false, data:null, detail:"保存内容を読めませんでした" }; }
+    },
+    save:async function(obj){
+      var raw=JSON.stringify(obj), n=0, err="";
+      if(okIdb){ try{ await tx("readwrite",function(st){ return st.put(raw,K); }); n++; }
+                 catch(e){ err="IndexedDB: "+(e&&e.message||e); } }
+      if(okLs){ try{ localStorage.setItem(K,raw); n++; }
+                catch(e){ err+=(err?" / ":"")+"localStorage: "+(e&&e.message||e); } }
+      return { ok:n>0, places:n, err:err };
+    }
+  };
+})();
+
+/* ══════════════ 集計 ══════════════ */
+function derive(s){
+  var log=s.log, perDay={}, perItem={}, catCount={}, i, e, k;
+  var total=0, hours=[];
+  for(i=0;i<log.length;i++){
+    e=log[i]; total+=(e.pt||0); k=dayKey(e.ts);
+    (perDay[k]=perDay[k]||[]).push(e);
+    if(e.itemId) perItem[e.itemId]=(perItem[e.itemId]||0)+1;
+    catCount[e.cat]=(catCount[e.cat]||0)+1;
+    hours.push(new Date(e.ts).getHours());
+  }
+  var dayCounts=Object.keys(perDay).map(function(k){ return perDay[k].length; });
+  var itemCounts=Object.keys(perItem).map(function(k){ return perItem[k]; });
+  var firstTs = log.length ? Math.min.apply(null,log.map(function(e){return e.ts;})) : s.firstUse;
+  var distinct={}, freeCount=0;
+  for(i=0;i<log.length;i++){ e=log[i];
+    distinct[e.itemId||("free:"+e.label)]=1;
+    if(!e.itemId&&!e.system) freeCount++; }
+  return {
+    total:total, count:log.length, perDay:perDay,
+    days:Object.keys(perDay).sort().reverse(),
+    perItem:perItem, catCount:catCount,
+    maxPerDay: dayCounts.length?Math.max.apply(null,dayCounts):0,
+    maxPerItem: itemCounts.length?Math.max.apply(null,itemCounts):0,
+    distinct:Object.keys(distinct).length,
+    catKinds:Object.keys(catCount).length,
+    freeCount:freeCount,
+    spanDays: Math.floor((Date.now()-firstTs)/86400000)+1,
+    morning: hours.some(function(h){return h>=5&&h<=8;}),
+    night: hours.some(function(h){return h>=0&&h<=3;})
+  };
+}
+function findNew(s){
+  var d=derive(s), found={}, gained=[], k;
+  for(k in s.found) found[k]=s.found[k];
+  SPECIMENS.forEach(function(sp){
+    if(!found[sp.id]&&sp.ok(d,s)){ found[sp.id]=Date.now(); gained.push(sp); }
+  });
+  return { found:found, gained:gained };
+}
+function mergeStates(a,b){
+  var dead={}, i, arr;
+  (a.dead||[]).concat(b.dead||[]).forEach(function(id){ dead[id]=1; });
+  var logMap={};
+  (a.log||[]).concat(b.log||[]).forEach(function(e){ if(!dead[e.id]) logMap[e.id]=e; });
+  var itemMap={};
+  (a.items||[]).concat(b.items||[]).forEach(function(it){ if(!itemMap[it.id]) itemMap[it.id]=it; });
+  var found={}; for(i in (a.found||{})) found[i]=a.found[i];
+  for(i in (b.found||{})) found[i]= found[i]?Math.min(found[i],b.found[i]):b.found[i];
+  var flags={}; for(i in (a.flags||{})) flags[i]=a.flags[i];
+  for(i in (b.flags||{})) flags[i]=b.flags[i];
+  arr=Object.keys(logMap).map(function(k){return logMap[k];}).sort(function(x,y){return x.ts-y.ts;});
+  return { v:1,
+    items:Object.keys(itemMap).map(function(k){return itemMap[k];}),
+    log:arr, found:found, flags:flags, dead:Object.keys(dead),
+    firstUse:Math.min(a.firstUse||Date.now(),b.firstUse||Date.now()),
+    lastVisit:Math.max(a.lastVisit||0,b.lastVisit||0),
+    lastExport:Math.max(a.lastExport||0,b.lastExport||0) };
+}
+
+/* ══════════════ 状態 ══════════════ */
+var S=null, D=null;
+var U={ tab:"rec", expand:null, adding:false, newLabel:"", newCat:"did",
+        freeOpen:false, freeText:"", freeCat:"did", draw:null,
+        welcome:null, toast:null, undoId:null, undoTimer:null,
+        dump:"", impOpen:false, impText:"", confirmDel:null, reorder:false,
+        saveNote:"", saveBad:false, storeInfo:"" };
+
+async function boot(){
+  var mode=await Store.init();
+  U.storeInfo=mode+(Store.detail?" — "+Store.detail:"");
+  var r=await Store.load();
+  if(!r.read){
+    S=emptyState(); U.saveBad=true;
+    U.saveNote=r.detail||"保存領域が使えません。記録はこの画面を閉じると消えます。";
+    D=derive(S); render(); return;
+  }
+  var now=Date.now();
+  if(!r.data){ S=emptyState(); U.welcome="first"; }
+  else{
+    S=Object.assign(emptyState(), r.data);
+    var away=now-(S.lastVisit||now);
+    if(away>5*86400000 && S.log.length>0){
+      S.flags.returned=true;
+      S.log.push({ id:uid(), label:"また開いた", cat:"notice", ts:now, pt:3, system:true, why:["おかえり"] });
+      U.welcome="back";
+    }
+  }
+  S.lastVisit=now;
+  S.found=findNew(S).found;
+  U.saveBad=!Store.writable();
+  if(U.saveBad) U.saveNote="この環境では保存できません。記録はこの画面を閉じると消えます。";
+  D=derive(S); render(); persist();
+}
+
+async function persist(){
+  if(!Store.writable()){ U.saveBad=true; return; }
+  var r=await Store.save(S);
+  U.saveBad=!r.ok;
+  U.saveNote=r.ok?"":("保存に失敗しました。"+r.err);
+  U.storeInfo=Store.mode+(r.ok?" / "+r.places+"か所に書き込み":"");
+  paintBanner();
+}
+function commit(){ D=derive(S); render(); persist(); }
+
+/* ══════════════ 記録 ══════════════ */
+function record(itemId,label,cat){
+  var now=Date.now(), why=[], pt=1, i, seenDay=false, seenItem=false;
+  for(i=0;i<S.log.length;i++){
+    if(dayKey(S.log[i].ts)===dayKey(now)) seenDay=true;
+    if(itemId&&S.log[i].itemId===itemId) seenItem=true;
+  }
+  if(!seenDay){ pt+=1; why.push("この日の最初"); }
+  if(itemId&&!seenItem){ pt+=2; why.push("はじめての一つ"); }
+  if(Math.random()<0.12){ pt+=2; why.push("たまたま"); }
+  var entry={ id:uid(), itemId:itemId||null, label:label, cat:cat, ts:now, pt:pt, why:why };
+  S.log.push(entry);
+  var f=findNew(S); S.found=f.found;
+  U.toast={ entry:entry, gained:f.gained }; U.undoId=entry.id;
+  clearTimeout(U.undoTimer);
+  U.undoTimer=setTimeout(function(){ U.undoId=null; U.toast=null; paintToast(); },8000);
+  commit();
+}
+function undoRecord(id){
+  clearTimeout(U.undoTimer); U.undoId=null; U.toast=null;
+  S.log=S.log.filter(function(e){ return e.id!==id; });
+  S.dead.push(id);
+  commit();
+}
+function addItem(label,cat){
+  S.items.push({ id:uid(), label:label, cat:cat });
+  S.found=findNew(S).found; commit();
+}
+
+/* ══════════════ 描画 ══════════════ */
+function render(){ paintHeader(); paintBanner(); paintView(); paintNav(); paintToast(); }
+
+function paintHeader(){
+  document.getElementById("hdr").innerHTML =
+    '<div class="hdr"><h1>積 層</h1><div style="text-align:right">'+
+    '<div class="total">'+D.total+'</div>'+
+    '<div class="mono" style="font-size:10px;letter-spacing:.14em;color:var(--faint);margin-top:4px">TOTAL PT</div>'+
+    '</div></div><div class="hdrmeta"><span>標本 '+Object.keys(S.found).length+'/'+SPECIMENS.length+'</span>'+
+    '<span>層 '+D.count+'</span>'+(D.count>0?'<span>'+D.spanDays+'日目</span>':'')+'</div>';
+}
+
+function paintBanner(){
+  var h="";
+  if(U.saveBad){
+    h+='<div class="warn">'+esc(U.saveNote||"保存されていません。")+
+       '<div style="margin-top:7px"><button class="mini" data-act="reboot">読み込み直す</button></div></div>';
+  }
+  if(U.welcome==="first"){
+    h+='<div class="panel fade" style="margin-bottom:22px">'+
+       '<div class="min" style="font-size:16px;margin-bottom:7px">やったことを、拾って置いておく場所です</div>'+
+       '<div class="xs dim">予定を立てて採点する道具ではありません。実際にやったことだけを置きます。'+
+       '置かなかった日は、ただ何もない日として通り過ぎます。まずは記録したいことのラベルを1つつくってください。</div>'+
+       '<div style="margin-top:11px"><button class="mini" data-act="closewelcome">閉じる</button></div></div>';
+  }else if(U.welcome==="back"){
+    h+='<div class="panel fade" style="margin-bottom:22px">'+
+       '<div class="min" style="font-size:16px;margin-bottom:7px">おかえりなさい。棚はそのままです</div>'+
+       '<div class="xs dim">空いていた分は何も引かれていません。また開いたことを1つの記録として置いておきました。</div>'+
+       '<div style="margin-top:11px"><button class="mini" data-act="closewelcome">閉じる</button></div></div>';
+  }
+  document.getElementById("banner").innerHTML=h;
+}
+
+function paintNav(){
+  var t=[["rec","記録"],["shelf","標本棚"],["strata","地層"],["set","設定"]];
+  document.getElementById("nav").innerHTML=t.map(function(x){
+    return '<button class="'+(U.tab===x[0]?"on":"")+'" data-act="tab" data-v="'+x[0]+'">'+x[1]+'</button>';
+  }).join("");
+}
+
+function paintToast(){
+  var el=document.getElementById("toast");
+  if(!U.toast){ el.innerHTML=""; return; }
+  var e=U.toast.entry, c=CATS[e.cat], can=(U.undoId===e.id);
+  var g=U.toast.gained.map(function(x){
+    return '<div class="min tiny" style="color:var(--part)">標本が増えました — '+esc(x.name)+'</div>'; }).join("");
+  el.innerHTML='<div class="inner"><div class="panel fade" style="border-left:3px solid '+c.color+'">'+
+    '<div class="row" style="align-items:center">'+
+      '<div class="grow"><div class="xs" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(e.label)+'</div>'+
+      (e.why.length?'<div class="lab">'+esc(e.why.join(" / "))+'</div>':'')+'</div>'+
+      '<div class="mono sm" style="color:'+c.color+'">+'+e.pt+'</div>'+
+      (can?'<button class="mini" data-act="undo" data-v="'+e.id+'">取り消す</button>'
+         :'<button class="mini" data-act="closetoast">閉じる</button>')+
+    '</div>'+(g?'<div style="border-top:1px solid var(--edge);margin-top:9px;padding-top:9px">'+g+'</div>':'')+
+    '</div></div>';
+}
+
+function paintView(){
+  var v=document.getElementById("view");
+  if(U.tab==="rec") v.innerHTML=viewRec();
+  else if(U.tab==="shelf") v.innerHTML=viewShelf();
+  else if(U.tab==="strata") v.innerHTML=viewStrata();
+  else v.innerHTML=viewSet();
+  restoreInputs();
+}
+function restoreInputs(){
+  var a=document.getElementById("in-label"); if(a) a.value=U.newLabel;
+  var b=document.getElementById("in-free"); if(b) b.value=U.freeText;
+  var c=document.getElementById("in-imp"); if(c) c.value=U.impText;
+  initDrag();
+}
+
+/* 並び替え：ハンドルを掴んで上下に動かす。指を離した時点の並びを保存する。 */
+function initDrag(){
+  var list=document.getElementById("orderlist");
+  if(!list||!window.PointerEvent) return;
+  Array.prototype.forEach.call(list.querySelectorAll("[data-drag]"),function(h){
+    h.addEventListener("pointerdown",function(ev){
+      ev.preventDefault();
+      var row=h.parentNode.parentNode, startY=ev.clientY;
+      row.classList.add("dragging");
+      try{ h.setPointerCapture(ev.pointerId); }catch(e){}
+      function move(e2){
+        row.style.transform="translateY("+(e2.clientY-startY)+"px)";
+        var rows=Array.prototype.slice.call(list.querySelectorAll("[data-row]"));
+        var dr=row.getBoundingClientRect(), mid=dr.top+dr.height/2, i, r, rr;
+        for(i=0;i<rows.length;i++){
+          r=rows[i]; if(r===row) continue;
+          rr=r.getBoundingClientRect();
+          if(mid>rr.top&&mid<rr.bottom){
+            row.style.transform=""; startY=e2.clientY;
+            if(mid<rr.top+rr.height/2) list.insertBefore(row,r);
+            else list.insertBefore(row,r.nextSibling);
+            break;
+          }
+        }
+      }
+      function up(){
+        h.removeEventListener("pointermove",move);
+        h.removeEventListener("pointerup",up);
+        h.removeEventListener("pointercancel",up);
+        row.classList.remove("dragging"); row.style.transform="";
+        var ids=Array.prototype.slice.call(list.querySelectorAll("[data-row]"))
+          .map(function(r){ return r.getAttribute("data-row"); });
+        S.items.sort(function(x,y){ return ids.indexOf(x.id)-ids.indexOf(y.id); });
+        commit();
+      }
+      h.addEventListener("pointermove",move);
+      h.addEventListener("pointerup",up);
+      h.addEventListener("pointercancel",up);
+    });
+  });
+}
+
+function chips(sel,act){
+  return '<div class="wrap">'+CAT_KEYS.map(function(k){
+    var on=(sel===k);
+    return '<button class="chip" data-act="'+act+'" data-v="'+k+'" style="'+
+      (on?'border-color:'+CATS[k].color+';color:'+CATS[k].color:'')+'">'+CATS[k].label+'</button>';
+  }).join("")+'</div>';
+}
+
+function viewRec(){
+  var h='<div class="seclabel">ラベル</div>';
+  if(!S.items.length&&!U.adding)
+    h+='<div class="xs dim" style="margin-bottom:14px">ラベルはまだありません。よくやること、たまにやること、どちらでも構いません。</div>';
+  h+='<div class="stack">';
+  S.items.forEach(function(it){
+    var c=CATS[it.cat], open=(U.expand===it.id);
+    h+='<div><div class="row">'+
+      '<button class="card grow" data-act="rec" data-v="'+it.id+'" style="border-left:3px solid '+c.color+'">'+
+        '<div class="sm">'+esc(it.label)+'</div><div class="lab">'+c.label+'</div></button>'+
+      '<button class="side'+(open?" on":"")+'" data-act="expand" data-v="'+it.id+'">'+(open?"×":"他")+'</button>'+
+      '</div>';
+    if(open){
+      h+='<div class="wrap fade" style="margin-top:7px;padding-left:3px">'+CAT_KEYS.map(function(k){
+        return '<button class="chip" data-act="recas" data-v="'+it.id+'" data-c="'+k+'" style="border-color:'+
+          CATS[k].color+';color:'+CATS[k].color+'">'+CATS[k].label+'</button>'; }).join("")+'</div>';
+    }
+    h+='</div>';
+  });
+  h+='</div>';
+
+  if(U.adding){
+    h+='<div class="panel fade" style="margin-top:11px">'+
+       '<input id="in-label" data-in="newLabel" placeholder="記録したいこと">'+
+       '<div style="margin-top:11px">'+chips(U.newCat,"newcat")+'</div>'+
+       '<div class="row" style="margin-top:11px"><button class="act" data-act="additem">棚に置く</button>'+
+       '<button class="ghost" data-act="canceladd">やめる</button></div></div>';
+  }else{
+    h+='<button class="dash" style="margin-top:11px" data-act="openadd">＋ ラベルをつくる</button>';
+  }
+
+  h+='<div class="seclabel mt">その場で書く</div>';
+  var recents=[], seen={}, i, e;
+  for(i=S.log.length-1;i>=0&&recents.length<8;i--){
+    e=S.log[i];
+    if(e.itemId||e.system||seen[e.label]) continue;
+    seen[e.label]=1; recents.push(e);
+  }
+  if(recents.length){
+    h+='<div style="margin-bottom:9px"><div class="note" style="margin-bottom:6px">前に書いたもの（タップでそのまま記録）</div><div class="wrap">'+
+      recents.map(function(e){
+        return '<button class="pill" data-act="recfree" data-v="'+esc(e.label)+'" data-c="'+e.cat+
+          '" style="border-left:2px solid '+CATS[e.cat].color+'">'+esc(e.label)+'</button>'; }).join("")+'</div></div>';
+  }
+  if(U.freeOpen){
+    h+='<div class="panel fade">'+
+       '<input id="in-free" data-in="freeText" placeholder="やったこと・できたこと">'+
+       '<div style="margin-top:11px">'+chips(U.freeCat,"freecat")+'</div>'+
+       '<div class="row" style="margin-top:11px"><button class="act" data-act="dofree">記録する</button>'+
+       '<button class="ghost" data-act="cancelfree">やめる</button></div></div>';
+  }else{
+    h+='<button class="card" style="text-align:center;font-size:12.5px" data-act="openfree">ラベルにないことを書く</button>';
+  }
+
+  h+='<div class="seclabel mt">気まぐれに3つ</div>';
+  if(!U.draw){
+    h+='<button class="dash" data-act="pull">引いてみる</button>';
+  }else{
+    h+='<div class="fade"><div class="note" style="margin-bottom:9px">提案です。引き直しても、しまっても、何も残りません。</div><div class="stack">';
+    U.draw.forEach(function(it,idx){
+      var c=CATS[it.cat], own=!it.preset;
+      var have=S.items.some(function(x){ return x.label===it.label; });
+      h+='<div class="row"><button class="card grow'+(own?"":" soft")+'" data-act="recdraw" data-v="'+idx+
+        '" style="border-left:3px '+(own?"solid":"dashed")+' '+c.color+'">'+
+        '<div class="sm">'+esc(it.label)+'</div><div class="lab">'+c.label+(own?"":" ・たね")+'</div></button>'+
+        (!own&&!have?'<button class="side" data-act="tolabel" data-v="'+idx+'">棚へ</button>':'')+'</div>';
+    });
+    h+='</div><div class="row" style="margin-top:9px">'+
+       '<button class="mini" data-act="pull">引きなおす</button>'+
+       '<button class="mini" data-act="closedraw">しまう</button></div></div>';
+  }
+  return h;
+}
+
+function viewShelf(){
+  var found=SPECIMENS.filter(function(sp){ return S.found[sp.id]; })
+    .sort(function(a,b){ return S.found[b.id]-S.found[a.id]; });
+  var rest=SPECIMENS.length-found.length;
+  var h='<div class="seclabel">見つけた標本</div>';
+  if(!found.length){
+    h+='<div class="xs dim">まだ棚は空です。1つ記録すると最初の標本が入ります。</div>';
+  }else{
+    h+='<div class="grid2">'+found.map(function(sp){
+      return '<div class="card"><div class="min sm" style="line-height:1.45">'+esc(sp.name)+'</div>'+
+        '<div class="tiny faint" style="margin-top:6px;line-height:1.6">'+esc(sp.note)+'</div>'+
+        '<div class="lab">'+dayKey(S.found[sp.id])+'</div></div>'; }).join("")+'</div>';
+  }
+  if(rest>0) h+='<div class="mono tiny faint" style="margin-top:16px">まだ見つかっていない標本 '+rest+'点</div>';
+  return h;
+}
+
+function viewStrata(){
+  var h='<div class="seclabel">地層</div>';
+  if(!D.count){
+    return h+'<div class="xs dim">記録すると、その日の層がここに積まれます。記録しなかった日は層になりません。空白も抜けも表示されません。</div>';
+  }
+  h+='<div class="note" style="margin-bottom:16px">記録した日だけが層になります。上が新しい層です。</div><div class="stack">';
+  D.days.forEach(function(k){
+    var es=D.perDay[k].slice().sort(function(a,b){ return b.ts-a.ts; });
+    var hh=Math.min(30,12+es.length*2), counts={};
+    es.forEach(function(e){ counts[e.cat]=(counts[e.cat]||0)+1; });
+    var open=(U.expand==="s:"+k);
+    h+='<div><button class="stratarow" data-act="expand" data-v="s:'+k+'">'+
+      '<span class="strataday"'+(open?' style="color:var(--chalk)"':'')+'>'+prettyDay(k)+'</span>'+
+      '<span class="band" style="height:'+hh+'px">'+CAT_KEYS.filter(function(c){return counts[c];})
+        .map(function(c){ return '<span style="background:'+CATS[c].color+';flex-grow:'+counts[c]+
+          ';opacity:'+(open?1:.82)+'"></span>'; }).join("")+'</span></button>';
+    if(open){
+      h+='<div class="fade" style="padding:9px 0 9px 68px">'+es.map(function(e){
+        return '<div class="entry" style="margin-bottom:6px"><span class="dot" style="background:'+CATS[e.cat].color+'"></span>'+
+          '<span class="xs grow">'+esc(e.label)+'</span>'+
+          '<span class="mono tiny faint">'+hhmm(e.ts)+'</span>'+
+          '<span class="mono tiny dim" style="width:26px;text-align:right">+'+e.pt+'</span></div>'; }).join("")+'</div>';
+    }
+    h+='</div>';
+  });
+  h+='</div><div style="border-top:1px solid var(--edge);margin-top:24px;padding-top:16px" class="mono tiny faint">'+
+     '<div>層の数 '+D.days.length+'</div><div>記録の数 '+D.count+'</div>'+
+     '<div>はじめての記録から '+D.spanDays+'日目</div></div>';
+  return h;
+}
+
+function viewSet(){
+  var h='<div class="seclabel">保存の状態</div>';
+  var good=Store.writable()&&!U.saveBad;
+  h+='<div class="card" style="border-left:3px solid '+(good?"var(--did)":"var(--part)")+'">'+
+     '<div class="sm">'+(good?"この端末に保存できています":"保存できていません")+'</div>'+
+     '<div class="lab" style="line-height:1.7">'+
+       '<div>方式 '+esc(U.storeInfo||Store.mode)+'</div>'+
+       (U.saveNote?'<div>'+esc(U.saveNote)+'</div>':'')+
+       '<div>記録 '+S.log.length+'件 / ラベル '+S.items.length+'件</div>'+
+       '<div>控えを取った日 '+(S.lastExport?dayKey(S.lastExport):"まだ")+'</div>'+
+     '</div>'+
+     '<div class="row" style="margin-top:9px"><button class="mini" data-act="resave">いま保存し直す</button>'+
+     '<button class="mini" data-act="reboot">読み込み直す</button></div></div>';
+  h+='<div class="note" style="margin-top:7px">データはこの端末の中だけにあります。ブラウザの閲覧データを消すと一緒に消えるので、'+
+     'ときどき下の書き出しでファイルを残しておくと安全です。</div>';
+
+  h+='<div class="seclabel mt">ラベルの整理</div>';
+  if(!S.items.length){ h+='<div class="xs dim">ラベルはまだありません。</div>'; }
+  else{
+    h+='<div class="row" style="margin-bottom:11px">'+
+       '<button class="mini" data-act="toggleorder">'+(U.reorder?"並び替えを終える":"並び替える")+'</button></div>';
+    if(U.reorder){
+      h+='<div class="stack" id="orderlist">'+S.items.map(function(it,i){
+        var c=CATS[it.cat];
+        return '<div class="card" data-row="'+it.id+'" style="border-left:3px solid '+c.color+';padding:7px 9px 7px 0">'+
+          '<div class="row" style="align-items:center;gap:6px">'+
+          '<span class="handle" data-drag="'+it.id+'">☰</span>'+
+          '<div class="grow"><div class="sm">'+esc(it.label)+'</div><div class="lab">'+c.label+'</div></div>'+
+          '<button class="arrow" data-act="moveup" data-v="'+it.id+'"'+(i===0?" disabled":"")+'>▲</button>'+
+          '<button class="arrow" data-act="movedown" data-v="'+it.id+'"'+(i===S.items.length-1?" disabled":"")+'>▼</button>'+
+          '</div></div>'; }).join("")+'</div>'+
+        '<div class="note" style="margin-top:7px">☰ を押したまま上下に動かすか、▲▼ で入れ替えます。'+
+        'ここでの並びが記録タブにそのまま反映されます。</div>';
+    }else{
+      h+='<div class="stack">'+S.items.map(function(it){
+        var c=CATS[it.cat];
+        return '<div class="card" style="border-left:3px solid '+c.color+'"><div class="row" style="align-items:center">'+
+          '<div class="grow"><div class="sm">'+esc(it.label)+'</div><div class="lab">'+c.label+'</div></div>'+
+          (U.confirmDel===it.id
+            ? '<button class="mini" style="color:var(--rest)" data-act="doremove" data-v="'+it.id+'">外す</button>'+
+              '<button class="mini" data-act="cancelremove">やめる</button>'
+            : '<button class="mini" data-act="askremove" data-v="'+it.id+'">棚から外す</button>')+
+          '</div></div>'; }).join("")+'</div>';
+      h+='<div class="note" style="margin-top:7px">棚から外しても、過去の記録とポイントは消えません。</div>';
+    }
+  }
+
+  var freq={}, i, e;
+  for(i=0;i<S.log.length;i++){ e=S.log[i];
+    if(e.itemId||e.system) continue;
+    freq[e.label]=freq[e.label]||{n:0,cat:e.cat}; freq[e.label].n++; freq[e.label].cat=e.cat; }
+  var rep=Object.keys(freq).filter(function(l){
+    return freq[l].n>=2 && !S.items.some(function(x){return x.label===l;}); })
+    .sort(function(a,b){ return freq[b].n-freq[a].n; }).slice(0,6);
+  if(rep.length){
+    h+='<div class="seclabel mt">何度か書いていること</div><div class="stack">'+rep.map(function(l){
+      return '<div class="card" style="border-left:3px dashed '+CATS[freq[l].cat].color+'">'+
+        '<div class="row" style="align-items:center"><div class="grow"><div class="sm">'+esc(l)+'</div>'+
+        '<div class="lab">'+freq[l].n+'回</div></div>'+
+        '<button class="mini" data-act="promote" data-v="'+esc(l)+'" data-c="'+freq[l].cat+'">ラベルにする</button>'+
+        '</div></div>'; }).join("")+'</div>'+
+      '<div class="note" style="margin-top:7px">ラベルにしなくても構いません。記録はそのまま残ります。</div>';
+  }
+
+  h+='<div class="seclabel mt">控えを取る</div>'+
+     '<div class="row"><button class="card grow" style="text-align:center;font-size:12.5px" data-act="export">ファイルに書き出す</button>'+
+     '<button class="side" data-act="showdump">画面に出す</button></div>';
+  if(U.dump){
+    h+='<textarea readonly rows="6" style="margin-top:7px" data-act="selectall">'+esc(U.dump)+'</textarea>'+
+       '<div class="note">枠をタップすると全選択します。コピーしてどこかに貼っておいても控えになります。</div>';
+  }
+
+  h+='<div class="seclabel mt">控えから戻す</div>';
+  if(U.impOpen){
+    h+='<div class="fade"><input type="file" id="impfile" accept=".json,application/json" style="border:none;padding:0;font-size:12px">'+
+       '<textarea id="in-imp" data-in="impText" rows="4" placeholder="または、書き出したJSONを貼る" style="margin-top:9px"></textarea>'+
+       '<div class="row" style="margin-top:9px"><button class="act" data-act="impmerge">今のものと統合する</button>'+
+       '<button class="ghost" data-act="impreplace">置き換える</button></div>'+
+       '<div class="row" style="margin-top:7px"><button class="mini" data-act="cancelimp">やめる</button></div>'+
+       '<div class="note" style="margin-top:7px">統合なら記録は増えるだけで消えません。置き換えは今の内容を捨てます。</div></div>';
+  }else{
+    h+='<button class="dash" data-act="openimp">控えを読み込む</button>';
+  }
+
+  h+='<div class="seclabel mt">この道具について</div>'+
+     '<div class="note"><p style="margin:0 0 9px">目標値、達成率、連続日数、未達の表示はありません。累計ポイントは減りません。</p>'+
+     '<p style="margin:0 0 9px">記録の取り消しは、押し間違いの直後（8秒間）だけできます。</p>'+
+     '<p style="margin:0">ポイントは1記録につき1点で、ボーナスは道具の側が勝手に付けます。自己採点はしません。</p></div>';
+  return h;
+}
+
+/* ══════════════ 操作 ══════════════ */
+document.addEventListener("input",function(ev){
+  var el=ev.target.closest("[data-in]"); if(!el) return;
+  U[el.dataset.in]=el.value;
+});
+
+document.addEventListener("change",function(ev){
+  if(ev.target.id!=="impfile") return;
+  var f=ev.target.files&&ev.target.files[0]; if(!f) return;
+  var fr=new FileReader();
+  fr.onload=function(){ U.impText=String(fr.result); restoreInputs(); alert("読み込みました。統合か置き換えを選んでください。"); };
+  fr.onerror=function(){ alert("ファイルを読めませんでした。"); };
+  fr.readAsText(f);
+});
+
+document.addEventListener("click",function(ev){
+  var el=ev.target.closest("[data-act]"); if(!el) return;
+  var a=el.dataset.act, v=el.dataset.v, c=el.dataset.c, it, idx, parsed;
+
+  if(a==="tab"){ U.tab=v; U.expand=null; U.confirmDel=null; paintView(); paintNav(); return; }
+  if(a==="reboot"){ boot(); return; }
+  if(a==="closewelcome"){ U.welcome=null; paintBanner(); return; }
+  if(a==="closetoast"){ U.toast=null; paintToast(); return; }
+  if(a==="undo"){ undoRecord(v); return; }
+  if(a==="expand"){ U.expand=(U.expand===v?null:v); paintView(); return; }
+
+  if(a==="rec"){ it=S.items.filter(function(x){return x.id===v;})[0]; if(it) record(it.id,it.label,it.cat); return; }
+  if(a==="recas"){ it=S.items.filter(function(x){return x.id===v;})[0]; if(it){ U.expand=null; record(it.id,it.label,c); } return; }
+  if(a==="recfree"){ record(null,v,c); return; }
+  if(a==="recdraw"){ it=U.draw[+v]; if(it){ U.draw=null; record(it.preset?"p:"+it.id:it.id,it.label,it.cat); } return; }
+  if(a==="tolabel"){ it=U.draw[+v]; if(it) addItem(it.label,it.cat); return; }
+
+  if(a==="openadd"){ U.adding=true; paintView(); return; }
+  if(a==="canceladd"){ U.adding=false; U.newLabel=""; paintView(); return; }
+  if(a==="newcat"){ U.newCat=v; paintView(); return; }
+  if(a==="additem"){
+    if(!U.newLabel.trim()) return;
+    addItem(U.newLabel.trim(),U.newCat);
+    U.newLabel=""; U.newCat="did"; U.adding=false; paintView(); return; }
+
+  if(a==="openfree"){ U.freeOpen=true; paintView();
+    var f=document.getElementById("in-free"); if(f) f.focus(); return; }
+  if(a==="cancelfree"){ U.freeOpen=false; U.freeText=""; paintView(); return; }
+  if(a==="freecat"){ U.freeCat=v; paintView(); return; }
+  if(a==="dofree"){
+    if(!U.freeText.trim()) return;
+    var t=U.freeText.trim(), cc=U.freeCat;
+    U.freeText=""; U.freeOpen=false; record(null,t,cc); return; }
+
+  if(a==="pull"){
+    var mine=shuffle(S.items), seeds=shuffle(PRESETS);
+    var take=Math.min(2,mine.length);
+    U.draw=shuffle(mine.slice(0,take).concat(seeds.slice(0,3-take))).slice(0,3);
+    paintView(); return; }
+  if(a==="closedraw"){ U.draw=null; paintView(); return; }
+
+  if(a==="toggleorder"){ U.reorder=!U.reorder; U.confirmDel=null; paintView(); return; }
+  if(a==="moveup"||a==="movedown"){
+    var pos=-1, k;
+    for(k=0;k<S.items.length;k++) if(S.items[k].id===v) pos=k;
+    if(pos<0) return;
+    var to=pos+(a==="moveup"?-1:1);
+    if(to<0||to>=S.items.length) return;
+    var tmp=S.items[pos]; S.items[pos]=S.items[to]; S.items[to]=tmp;
+    commit(); return; }
+  if(a==="askremove"){ U.confirmDel=v; paintView(); return; }
+  if(a==="cancelremove"){ U.confirmDel=null; paintView(); return; }
+  if(a==="doremove"){ U.confirmDel=null; S.items=S.items.filter(function(x){return x.id!==v;}); commit(); return; }
+  if(a==="promote"){ addItem(v,c); return; }
+
+  if(a==="resave"){ persist(); return; }
+  if(a==="export"){
+    var raw=JSON.stringify(S,null,2);
+    try{
+      var blob=new Blob([raw],{type:"application/json"});
+      var url=URL.createObjectURL(blob), an=document.createElement("a");
+      an.href=url; an.download="sekiso-"+dayKey(Date.now())+".json";
+      document.body.appendChild(an); an.click();
+      setTimeout(function(){ URL.revokeObjectURL(url); an.remove(); },2000);
+      S.lastExport=Date.now(); commit();
+    }catch(e){ U.dump=raw; paintView(); alert("ファイルにできなかったので、画面に出しました。"); }
+    return; }
+  if(a==="showdump"){ U.dump=JSON.stringify(S,null,2); S.lastExport=Date.now(); commit(); return; }
+  if(a==="selectall"){ el.select(); return; }
+
+  if(a==="openimp"){ U.impOpen=true; paintView(); return; }
+  if(a==="cancelimp"){ U.impOpen=false; U.impText=""; paintView(); return; }
+  if(a==="impmerge"||a==="impreplace"){
+    try{ parsed=JSON.parse(U.impText); }catch(e){ alert("読み込めませんでした。書き出したJSONをそのまま貼ってください。"); return; }
+    if(!parsed||!Array.isArray(parsed.log)||!Array.isArray(parsed.items)){ alert("形式が違うようです。"); return; }
+    if(a==="impreplace"&&!confirm("今の記録をすべて捨てて置き換えます。よろしいですか。")) return;
+    S = (a==="impmerge") ? mergeStates(S,Object.assign(emptyState(),parsed)) : Object.assign(emptyState(),parsed);
+    S.found=findNew(S).found; U.impOpen=false; U.impText=""; commit(); return; }
+});
+
+/* http(s) で配信されているときだけ Service Worker を使う。file:// では何もしない。 */
+if("serviceWorker" in navigator && /^https?:/.test(location.protocol)){
+  navigator.serviceWorker.register("./sw.js").catch(function(){});
+}
+
+boot();
+</script>
+</body>
+</html>
