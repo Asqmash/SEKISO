@@ -2,7 +2,7 @@
   "name": "積層",
   "short_name": "積層",
   "description": "やったこと・できたことを加点だけで積み上げる記録帳",
-  "start_url": "./",
+  "start_url": "./?src=home",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
@@ -13,5 +13,28 @@
     { "src": "./icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
     { "src": "./icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
     { "src": "./icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    {
+      "name": "その場で書く",
+      "short_name": "書く",
+      "description": "ラベルにないことをすぐ記録する",
+      "url": "./?go=free",
+      "icons": [{ "src": "./icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "気まぐれに3つ",
+      "short_name": "3つ引く",
+      "description": "できそうなことを3つ提案してもらう",
+      "url": "./?go=draw",
+      "icons": [{ "src": "./icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "地層を見る",
+      "short_name": "地層",
+      "description": "これまで積んだ層を見る",
+      "url": "./?go=strata",
+      "icons": [{ "src": "./icon-192.png", "sizes": "192x192" }]
+    }
   ]
 }

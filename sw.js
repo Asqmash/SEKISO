@@ -1,7 +1,7 @@
 /* 積層 — Service Worker
    アプリを更新したら、必ず下の VERSION を上げること。
    上げないと端末に古いキャッシュが残り続け、更新が反映されない。 */
-const VERSION = "sekiso-v1";
+const VERSION = "sekiso-v2";
 const SHELL = [
   "./",
   "./index.html",

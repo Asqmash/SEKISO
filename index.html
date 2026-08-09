@@ -54,6 +54,7 @@ h1{font-family:var(--min);font-size:21px;letter-spacing:.18em;font-weight:400;ma
 .hdr{display:flex;align-items:baseline;justify-content:space-between}
 .total{font-family:var(--mono);font-size:26px;line-height:1}
 .hdrmeta{display:flex;gap:16px;margin-top:11px;font-family:var(--mono);font-size:11px;color:var(--faint)}
+#hdr{margin-bottom:26px}
 
 .card{background:var(--card);border:1px solid var(--edge);border-radius:4px;padding:11px 13px;text-align:left;width:100%;display:block}
 .soft{background:var(--felt)}
@@ -70,6 +71,8 @@ h1{font-family:var(--min);font-size:21px;letter-spacing:.18em;font-weight:400;ma
 .lab{font-family:var(--mono);font-size:10px;color:var(--faint);margin-top:4px}
 
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.spec{padding:9px 11px 11px}
+.specimg{background:var(--ground);border-radius:3px;padding:4px 0;margin-bottom:9px}
 
 .handle{touch-action:none;cursor:grab;padding:0 11px;font-size:15px;color:var(--faint);
   align-self:stretch;display:flex;align-items:center;flex-shrink:0}
@@ -78,6 +81,12 @@ h1{font-family:var(--min);font-size:21px;letter-spacing:.18em;font-weight:400;ma
   color:var(--dim);flex-shrink:0}
 .arrow[disabled]{opacity:.3}
 .dragging{opacity:.65;position:relative;z-index:5}
+
+.datebar{border:1px solid var(--pass);border-radius:4px;padding:9px 12px;margin-bottom:16px;
+  background:var(--felt)}
+.datelink{float:right;font-size:10px;font-family:var(--mono);color:var(--pass);
+  border-bottom:1px solid var(--edge);letter-spacing:normal}
+input[type=date]{color-scheme:dark;font-family:var(--mono);font-size:13px}
 
 .band{display:flex;border-radius:3px;overflow:hidden;flex:1}
 .stratarow{display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:2px 0}
@@ -232,7 +241,23 @@ var Store = (function(){
   }
 
   return {
-    mode:"memory", detail:"",
+    mode:"memory", detail:"", persisted:null, quota:null,
+    /* ブラウザによる自動退避（eviction）を防ぐため、永続化を要求する。
+       PWAとしてインストール済みなら通常は許可される。 */
+    requestPersist:async function(){
+      try{
+        if(!navigator.storage||!navigator.storage.persist){ this.persisted="unsupported"; return; }
+        var already=false;
+        if(navigator.storage.persisted) already=await navigator.storage.persisted();
+        this.persisted = already ? true : await navigator.storage.persist();
+      }catch(e){ this.persisted="error"; }
+      try{
+        if(navigator.storage&&navigator.storage.estimate){
+          var e2=await navigator.storage.estimate();
+          if(e2&&e2.quota) this.quota=Math.round((e2.usage||0)/1024)+"KB / "+Math.round(e2.quota/1048576)+"MB";
+        }
+      }catch(e){}
+    },
     init:async function(){
       try{
         if(typeof indexedDB!=="undefined"&&indexedDB){
@@ -248,6 +273,7 @@ var Store = (function(){
         localStorage.removeItem("sekiso.probe");
       }catch(e){ okLs=false; this.detail+=(this.detail?" / ":"")+"localStorage: "+(e&&e.message||e); }
       this.mode = okIdb ? (okLs?"IndexedDB + localStorage":"IndexedDB") : (okLs?"localStorage":"memory");
+      await this.requestPersist();
       return this.mode;
     },
     writable:function(){ return okIdb||okLs; },
@@ -336,6 +362,7 @@ function mergeStates(a,b){
 var S=null, D=null;
 var U={ tab:"rec", expand:null, adding:false, newLabel:"", newCat:"did",
         freeOpen:false, freeText:"", freeCat:"did", draw:null,
+        recDate:null, dateOpen:false,
         welcome:null, toast:null, undoId:null, undoTimer:null,
         dump:"", impOpen:false, impText:"", confirmDel:null, reorder:false,
         saveNote:"", saveBad:false, storeInfo:"" };
@@ -364,7 +391,20 @@ async function boot(){
   S.found=findNew(S).found;
   U.saveBad=!Store.writable();
   if(U.saveBad) U.saveNote="この環境では保存できません。記録はこの画面を閉じると消えます。";
+
+  /* ホーム画面アイコンの長押しから来たときは、目的の場所を直接開く */
+  try{
+    var go=new URLSearchParams(location.search).get("go");
+    if(go==="free"){ U.tab="rec"; U.freeOpen=true; }
+    else if(go==="draw"){ U.tab="rec"; U.pullOnBoot=true; }
+    else if(go==="strata"){ U.tab="strata"; }
+    else if(go==="shelf"){ U.tab="shelf"; }
+    if(go) history.replaceState(null,"",location.pathname);
+  }catch(e){}
+
   D=derive(S); render(); persist();
+  if(U.pullOnBoot){ U.pullOnBoot=false; doPull(); }
+  if(U.freeOpen){ var ff=document.getElementById("in-free"); if(ff) ff.focus(); }
 }
 
 async function persist(){
@@ -378,17 +418,28 @@ async function persist(){
 function commit(){ D=derive(S); render(); persist(); }
 
 /* ══════════════ 記録 ══════════════ */
-function record(itemId,label,cat){
-  var now=Date.now(), why=[], pt=1, i, seenDay=false, seenItem=false;
+/* backDate: "YYYY-MM-DD" を渡すとその日として記録する。省略時は今。
+   遡って記録しても増えるだけなので、原則に反しない。 */
+function record(itemId,label,cat,backDate){
+  var now=Date.now(), ts=now, why=[], pt=1, i, seenDay=false, seenItem=false;
+  if(backDate && backDate!==dayKey(now)){
+    var p=backDate.split("-");
+    /* その日の正午に置く。時刻は分からないので、朝夜の標本条件を誤って満たさない値にする */
+    ts=new Date(+p[0],+p[1]-1,+p[2],12,0,0).getTime();
+    if(isNaN(ts)||ts>now) ts=now; else why.push(prettyDay(backDate)+"の分");
+  }
+  var key=dayKey(ts);
   for(i=0;i<S.log.length;i++){
-    if(dayKey(S.log[i].ts)===dayKey(now)) seenDay=true;
+    if(dayKey(S.log[i].ts)===key) seenDay=true;
     if(itemId&&S.log[i].itemId===itemId) seenItem=true;
   }
   if(!seenDay){ pt+=1; why.push("この日の最初"); }
   if(itemId&&!seenItem){ pt+=2; why.push("はじめての一つ"); }
   if(Math.random()<0.12){ pt+=2; why.push("たまたま"); }
-  var entry={ id:uid(), itemId:itemId||null, label:label, cat:cat, ts:now, pt:pt, why:why };
+  var entry={ id:uid(), itemId:itemId||null, label:label, cat:cat, ts:ts, pt:pt, why:why };
+  if(ts!==now) entry.late=now;
   S.log.push(entry);
+  S.log.sort(function(a,b){ return a.ts-b.ts; });
   var f=findNew(S); S.found=f.found;
   U.toast={ entry:entry, gained:f.gained }; U.undoId=entry.id;
   clearTimeout(U.undoTimer);
@@ -405,6 +456,13 @@ function addItem(label,cat){
   S.items.push({ id:uid(), label:label, cat:cat });
   S.found=findNew(S).found; commit();
 }
+/* 自分のラベルを優先しつつ、必ず1枠はたねを混ぜる */
+function doPull(){
+  var mine=shuffle(S.items), seeds=shuffle(PRESETS);
+  var take=Math.min(2,mine.length);
+  U.draw=shuffle(mine.slice(0,take).concat(seeds.slice(0,3-take))).slice(0,3);
+  U.tab="rec"; paintView(); paintNav();
+}
 
 /* ══════════════ 描画 ══════════════ */
 function render(){ paintHeader(); paintBanner(); paintView(); paintNav(); paintToast(); }
@@ -414,7 +472,7 @@ function paintHeader(){
     '<div class="hdr"><h1>積 層</h1><div style="text-align:right">'+
     '<div class="total">'+D.total+'</div>'+
     '<div class="mono" style="font-size:10px;letter-spacing:.14em;color:var(--faint);margin-top:4px">TOTAL PT</div>'+
-    '</div></div><div class="hdrmeta"><span>標本 '+Object.keys(S.found).length+'/'+SPECIMENS.length+'</span>'+
+    '</div></div><div class="hdrmeta"><span>標本 '+Object.keys(S.found).length+'</span>'+
     '<span>層 '+D.count+'</span>'+(D.count>0?'<span>'+D.spanDays+'日目</span>':'')+'</div>';
 }
 
@@ -529,7 +587,33 @@ function chips(sel,act){
 }
 
 function viewRec(){
-  var h='<div class="seclabel">ラベル</div>';
+  var today=dayKey(Date.now());
+  var back=(U.recDate&&U.recDate!==today)?U.recDate:null;
+  var h="";
+
+  /* 記録する日。既定は今日。遡るときだけ帯を出して、取り違えを防ぐ。 */
+  if(back){
+    h+='<div class="datebar fade"><div class="row" style="align-items:center">'+
+       '<div class="grow"><div class="xs">'+prettyDay(back)+'として記録します</div>'+
+       '<div class="lab">今日の分は積まれません</div></div>'+
+       '<button class="mini" data-act="today">今日に戻す</button></div></div>';
+  }
+  h+='<div class="seclabel">ラベル';
+  if(!back) h+='<button class="datelink" data-act="opendate">別の日に記録</button>';
+  h+='</div>';
+  if(U.dateOpen&&!back){
+    var y=dayKey(Date.now()-86400000), y2=dayKey(Date.now()-2*86400000);
+    h+='<div class="panel fade" style="margin-bottom:11px">'+
+       '<div class="note" style="margin-bottom:9px">思い出した分を後から積めます。遡っても減点は起きません。</div>'+
+       '<div class="wrap">'+
+       '<button class="chip" data-act="setdate" data-v="'+y+'">昨日</button>'+
+       '<button class="chip" data-act="setdate" data-v="'+y2+'">おととい</button>'+
+       '</div>'+
+       '<input type="date" id="in-date" max="'+today+'" value="'+today+'" style="margin-top:9px">'+
+       '<div class="row" style="margin-top:9px">'+
+       '<button class="act" data-act="usedate">この日にする</button>'+
+       '<button class="ghost" data-act="closedate">やめる</button></div></div>';
+  }
   if(!S.items.length&&!U.adding)
     h+='<div class="xs dim" style="margin-bottom:14px">ラベルはまだありません。よくやること、たまにやること、どちらでも構いません。</div>';
   h+='<div class="stack">';
@@ -602,20 +686,99 @@ function viewRec(){
   return h;
 }
 
+/* 標本の図像。IDから決定的に生成するので、同じ標本はいつ見ても同じ姿になる。
+   外部の画像は一切使わず、その場でSVGを組む。
+   骨格を6種（柱状・群晶・塊状・板状・針状・層状）用意して、色違いに見えないようにする。 */
+function mineralSvg(id){
+  var seed=0, i, j;
+  for(i=0;i<id.length;i++) seed=(seed*31+id.charCodeAt(i))>>>0;
+  seed=(seed^0x9E3779B9)>>>0;
+  function rnd(){ seed=(seed*1664525+1013904223)>>>0; return seed/4294967296; }
+  function pick(a){ return a[Math.floor(rnd()*a.length)]; }
+
+  var pal=[CATS.did.color,CATS.part.color,CATS.pass.color,CATS.notice.color,CATS.rest.color];
+  var c1=pick(pal), c2=pick(pal.filter(function(c){return c!==c1;}))||c1;
+  var W=100,H=76, floor=H-9, out="";
+  var form=Math.floor(rnd()*6);
+
+  function facet(pts,col,op){ out+='<polygon points="'+pts+'" fill="'+col+'" opacity="'+op.toFixed(2)+'"/>'; }
+  function cl(v,lo,hi){ return v<lo?lo:(v>hi?hi:v); }
+
+  if(form===0){                                   /* 柱状 — 六角柱を数本 */
+    var n=2+Math.floor(rnd()*2);
+    for(i=0;i<n;i++){
+      var w=13+rnd()*10, x=cl(30+i*17+rnd()*5,8,W-8-w), t=14+rnd()*18, tip=Math.max(9,t-6-rnd()*8);
+      facet([x+w/2+","+tip, (x+w)+","+t, (x+w)+","+floor, x+","+floor, x+","+t].join(" "),
+            i%2?c2:c1, 0.55+i*0.16);
+      out+='<line x1="'+(x+w/2).toFixed(1)+'" y1="'+tip.toFixed(1)+'" x2="'+(x+w/2).toFixed(1)+
+           '" y2="'+floor+'" stroke="var(--chalk)" stroke-width="0.5" opacity="0.22"/>';
+    }
+  }else if(form===1){                             /* 群晶 — 小さな尖りの集合 */
+    var m=4+Math.floor(rnd()*4);
+    for(i=0;i<m;i++){
+      var bw=8+rnd()*11, bx=cl(22+rnd()*54,8,W-8-bw), bh=16+rnd()*28;
+      facet([bx+","+floor, (bx+bw/2)+","+(floor-bh), (bx+bw)+","+floor].join(" "),
+            i%2?c1:c2, 0.5+rnd()*0.42);
+    }
+  }else if(form===2){                             /* 塊状 — 丸い房 */
+    var k=3+Math.floor(rnd()*3);
+    for(i=0;i<k;i++){
+      var r=9+rnd()*11;
+      out+='<circle cx="'+cl(28+rnd()*44,r+6,W-r-6).toFixed(1)+'" cy="'+cl(floor-r*0.7-rnd()*14,r+8,floor).toFixed(1)+
+           '" r="'+r.toFixed(1)+'" fill="'+(i%2?c2:c1)+'" opacity="'+(0.5+rnd()*0.4).toFixed(2)+'"/>';
+    }
+  }else if(form===3){                             /* 板状 — 横長の板を斜めに重ねる */
+    var p=3+Math.floor(rnd()*3);
+    for(i=0;i<p;i++){
+      var pw=32+rnd()*26, ph=7+rnd()*7, px=cl((W-pw)/2+(rnd()-0.5)*12,8,W-8-pw), py=floor-ph-i*(ph+2);
+      var sk=(rnd()-0.5)*10;
+      facet([px+","+ (py+ph), (px+pw)+","+(py+ph-sk*0.4), (px+pw+sk)+","+py, (px+sk)+","+py].join(" "),
+            i%2?c1:c2, 0.5+i*0.14);
+    }
+  }else if(form===4){                             /* 針状 — 一点から扇状に伸びる（上方向のみ） */
+    var q=5+Math.floor(rnd()*5), ax=44+rnd()*12;
+    for(i=0;i<q;i++){
+      var ang=(-152+i*(124/q)+rnd()*10)*Math.PI/180, len=20+rnd()*26, tw=1.5+rnd()*2.2;
+      var ex=cl(ax+Math.cos(ang)*len,6,94), ey=cl(floor+Math.sin(ang)*len,10,floor-4);
+      facet([(ax-tw)+","+floor, (ax+tw)+","+floor, ex.toFixed(1)+","+ey.toFixed(1)].join(" "),
+            i%2?c2:c1, 0.48+rnd()*0.44);
+    }
+  }else{                                          /* 層状 — 積み重なった帯（積層のモチーフ） */
+    var lay=4+Math.floor(rnd()*4), yy=floor, cols=[c1,c2,pick(pal)];
+    for(i=0;i<lay&&yy>12;i++){
+      var lh=4+rnd()*9, lw=40+rnd()*30, lx=cl((W-lw)/2+(rnd()-0.5)*8,8,W-8-lw);
+      out+='<rect x="'+lx.toFixed(1)+'" y="'+(yy-lh).toFixed(1)+'" width="'+lw.toFixed(1)+
+           '" height="'+lh.toFixed(1)+'" rx="'+(lh*0.25).toFixed(1)+'" fill="'+cols[i%3]+
+           '" opacity="'+(0.45+i*0.11).toFixed(2)+'"/>';
+      yy-=lh+1.5;
+    }
+  }
+
+  /* 微細な粒（共通の質感） */
+  for(i=0;i<3+Math.floor(rnd()*3);i++){
+    out+='<circle cx="'+(14+rnd()*72).toFixed(1)+'" cy="'+(14+rnd()*48).toFixed(1)+
+         '" r="'+(0.6+rnd()*1.2).toFixed(1)+'" fill="var(--chalk)" opacity="0.26"/>';
+  }
+  /* 台座 */
+  out+='<rect x="10" y="'+floor+'" width="80" height="4" rx="2" fill="var(--edge)"/>';
+  return '<svg viewBox="0 0 '+W+' '+H+'" width="100%" height="62" aria-hidden="true">'+out+'</svg>';
+}
+
 function viewShelf(){
   var found=SPECIMENS.filter(function(sp){ return S.found[sp.id]; })
     .sort(function(a,b){ return S.found[b.id]-S.found[a.id]; });
-  var rest=SPECIMENS.length-found.length;
   var h='<div class="seclabel">見つけた標本</div>';
   if(!found.length){
     h+='<div class="xs dim">まだ棚は空です。1つ記録すると最初の標本が入ります。</div>';
   }else{
     h+='<div class="grid2">'+found.map(function(sp){
-      return '<div class="card"><div class="min sm" style="line-height:1.45">'+esc(sp.name)+'</div>'+
+      return '<div class="card spec">'+
+        '<div class="specimg">'+mineralSvg(sp.id,S.found[sp.id])+'</div>'+
+        '<div class="min sm" style="line-height:1.45">'+esc(sp.name)+'</div>'+
         '<div class="tiny faint" style="margin-top:6px;line-height:1.6">'+esc(sp.note)+'</div>'+
         '<div class="lab">'+dayKey(S.found[sp.id])+'</div></div>'; }).join("")+'</div>';
+    h+='<div class="mono tiny faint" style="margin-top:16px">見つけた標本 '+found.length+'点</div>';
   }
-  if(rest>0) h+='<div class="mono tiny faint" style="margin-top:16px">まだ見つかっていない標本 '+rest+'点</div>';
   return h;
 }
 
@@ -653,18 +816,35 @@ function viewStrata(){
 function viewSet(){
   var h='<div class="seclabel">保存の状態</div>';
   var good=Store.writable()&&!U.saveBad;
+  var pj={ true:"許可されています（自動削除されません）",
+           false:"未許可（容量不足時などに消える可能性があります）",
+           unsupported:"このブラウザは永続化に対応していません",
+           error:"確認できませんでした" };
+  var pv=pj[String(Store.persisted)]||"確認中";
   h+='<div class="card" style="border-left:3px solid '+(good?"var(--did)":"var(--part)")+'">'+
      '<div class="sm">'+(good?"この端末に保存できています":"保存できていません")+'</div>'+
      '<div class="lab" style="line-height:1.7">'+
        '<div>方式 '+esc(U.storeInfo||Store.mode)+'</div>'+
+       '<div>永続化 '+esc(pv)+'</div>'+
+       (Store.quota?'<div>使用量 '+esc(Store.quota)+'</div>':'')+
        (U.saveNote?'<div>'+esc(U.saveNote)+'</div>':'')+
        '<div>記録 '+S.log.length+'件 / ラベル '+S.items.length+'件</div>'+
        '<div>控えを取った日 '+(S.lastExport?dayKey(S.lastExport):"まだ")+'</div>'+
      '</div>'+
      '<div class="row" style="margin-top:9px"><button class="mini" data-act="resave">いま保存し直す</button>'+
-     '<button class="mini" data-act="reboot">読み込み直す</button></div></div>';
-  h+='<div class="note" style="margin-top:7px">データはこの端末の中だけにあります。ブラウザの閲覧データを消すと一緒に消えるので、'+
-     'ときどき下の書き出しでファイルを残しておくと安全です。</div>';
+     '<button class="mini" data-act="reboot">読み込み直す</button>'+
+     (Store.persisted===false?'<button class="mini" data-act="repersist">永続化を要求</button>':'')+
+     '</div></div>';
+  if(Store.persisted===false){
+    h+='<div class="note" style="margin-top:7px;color:var(--part)">永続化が未許可です。ホーム画面に追加したアイコンから起動すると許可されやすくなります。</div>';
+  }
+  var stale = S.lastExport ? (Date.now()-S.lastExport)>30*86400000 : S.log.length>=20;
+  if(stale){
+    h+='<div class="note" style="margin-top:7px">'+
+       (S.lastExport?"控えを取ってから30日以上経っています。":"記録が増えてきました。")+
+       'ときどき書き出しておくと安全です。</div>';
+  }
+  h+='<div class="note" style="margin-top:7px">データはこの端末の中だけにあります。ブラウザの閲覧データを消すと一緒に消えます。</div>';
 
   h+='<div class="seclabel mt">ラベルの整理</div>';
   if(!S.items.length){ h+='<div class="xs dim">ラベルはまだありません。</div>'; }
@@ -767,11 +947,21 @@ document.addEventListener("click",function(ev){
   if(a==="undo"){ undoRecord(v); return; }
   if(a==="expand"){ U.expand=(U.expand===v?null:v); paintView(); return; }
 
-  if(a==="rec"){ it=S.items.filter(function(x){return x.id===v;})[0]; if(it) record(it.id,it.label,it.cat); return; }
-  if(a==="recas"){ it=S.items.filter(function(x){return x.id===v;})[0]; if(it){ U.expand=null; record(it.id,it.label,c); } return; }
-  if(a==="recfree"){ record(null,v,c); return; }
-  if(a==="recdraw"){ it=U.draw[+v]; if(it){ U.draw=null; record(it.preset?"p:"+it.id:it.id,it.label,it.cat); } return; }
+  if(a==="rec"){ it=S.items.filter(function(x){return x.id===v;})[0]; if(it) record(it.id,it.label,it.cat,U.recDate); return; }
+  if(a==="recas"){ it=S.items.filter(function(x){return x.id===v;})[0]; if(it){ U.expand=null; record(it.id,it.label,c,U.recDate); } return; }
+  if(a==="recfree"){ record(null,v,c,U.recDate); return; }
+  if(a==="recdraw"){ it=U.draw[+v]; if(it){ U.draw=null; record(it.preset?"p:"+it.id:it.id,it.label,it.cat,U.recDate); } return; }
   if(a==="tolabel"){ it=U.draw[+v]; if(it) addItem(it.label,it.cat); return; }
+
+  if(a==="opendate"){ U.dateOpen=true; paintView(); return; }
+  if(a==="closedate"){ U.dateOpen=false; paintView(); return; }
+  if(a==="setdate"){ U.recDate=v; U.dateOpen=false; paintView(); return; }
+  if(a==="usedate"){
+    var di=document.getElementById("in-date");
+    if(di&&di.value&&di.value<=dayKey(Date.now())){ U.recDate=di.value; U.dateOpen=false; paintView(); }
+    return; }
+  if(a==="today"){ U.recDate=null; U.dateOpen=false; paintView(); return; }
+  if(a==="repersist"){ Store.requestPersist().then(function(){ paintView(); }); return; }
 
   if(a==="openadd"){ U.adding=true; paintView(); return; }
   if(a==="canceladd"){ U.adding=false; U.newLabel=""; paintView(); return; }
@@ -788,13 +978,9 @@ document.addEventListener("click",function(ev){
   if(a==="dofree"){
     if(!U.freeText.trim()) return;
     var t=U.freeText.trim(), cc=U.freeCat;
-    U.freeText=""; U.freeOpen=false; record(null,t,cc); return; }
+    U.freeText=""; U.freeOpen=false; record(null,t,cc,U.recDate); return; }
 
-  if(a==="pull"){
-    var mine=shuffle(S.items), seeds=shuffle(PRESETS);
-    var take=Math.min(2,mine.length);
-    U.draw=shuffle(mine.slice(0,take).concat(seeds.slice(0,3-take))).slice(0,3);
-    paintView(); return; }
+  if(a==="pull"){ doPull(); return; }
   if(a==="closedraw"){ U.draw=null; paintView(); return; }
 
   if(a==="toggleorder"){ U.reorder=!U.reorder; U.confirmDel=null; paintView(); return; }
